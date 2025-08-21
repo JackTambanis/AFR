@@ -1,113 +1,102 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>iPad Facial Expression Detector</title>
-  <style>
-    body { 
-      margin:0; 
-      display:flex; 
-      flex-direction:column; 
-      align-items:center; 
-      background:#111; 
-      color:#eee; 
-      font-family:sans-serif; 
-    }
-    #container { 
-      position:relative; 
-      width:90vw; 
-      max-width:640px; 
-      margin-top:20px; 
-      border:2px solid #444; 
-      overflow:hidden; 
-    }
-    video, canvas { 
-      position:absolute; 
-      top:0; 
-      left:0; 
-      width:100%; 
-      height:100%; 
-      object-fit:cover; 
-    }
-    #legend { margin-top:16px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Facial Expression Detector with Percentages</title>
+<style>
+  body { margin:0; display:flex; flex-direction:column; align-items:center; background:#111; color:#eee; font-family:sans-serif; }
+  #container { position:relative; width:90vw; max-width:640px; margin-top:20px; border:2px solid #444; overflow:hidden; }
+  video, canvas { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+  #legend { margin-top:16px; text-align:center; }
+</style>
 </head>
 <body>
-  <h1>Facial Expression Detector (iPad)</h1>
-  <p>Allow camera access. Runs fully in your browser.</p>
+<h1>Facial Expression Detector</h1>
+<p>Allow camera access. Detects faces and shows top expressions.</p>
 
-  <div id="container">
-    <video id="video" autoplay muted playsinline></video>
-    <canvas id="overlay"></canvas>
-  </div>
-  <div id="legend">Loading models…</div>
+<div id="container">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+</div>
+<div id="legend">Loading models…</div>
 
-  <!-- @vladmandic/face-api pre-hosted -->
-  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('overlay');
-    const legend = document.getElementById('legend');
-    const ctx = canvas.getContext('2d');
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const legend = document.getElementById('legend');
+const ctx = canvas.getContext('2d');
 
-    // Polyfill for older Safari
-    if (!navigator.mediaDevices) navigator.mediaDevices = {};
-    if (!navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia = function(constraints) {
-        const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-        if (!getUserMedia) return Promise.reject(new Error("getUserMedia not supported"));
-        return new Promise((resolve, reject) => getUserMedia.call(navigator, constraints, resolve, reject));
-      };
-    }
+// Polyfill for Safari
+if (!navigator.mediaDevices) navigator.mediaDevices = {};
+if (!navigator.mediaDevices.getUserMedia) {
+  navigator.mediaDevices.getUserMedia = function(constraints) {
+    const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    if (!getUserMedia) return Promise.reject(new Error("getUserMedia not supported"));
+    return new Promise((resolve, reject) => getUserMedia.call(navigator, constraints, resolve, reject));
+  };
+}
 
-    async function setup() {
-      try {
-        legend.textContent = "Loading models…";
-        const MODEL_URL = 'https://vladmandic.github.io/face-api/model/';
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
-        legend.textContent = "Models loaded. Starting camera…";
+// Load models and start camera
+async function setup() {
+  try {
+    legend.textContent = "Loading models…";
+    const MODEL_URL = 'https://vladmandic.github.io/face-api/model/';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+    legend.textContent = "Models loaded. Starting camera…";
 
-        // Request camera
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        video.srcObject = stream;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    video.srcObject = stream;
 
-        video.onloadedmetadata = () => {
-          video.play();
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          detectLoop();
-        };
-      } catch (err) {
-        legend.textContent = "Camera error: " + err.message;
-      }
-    }
+    video.onloadedmetadata = () => {
+      video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      detectLoop();
+    };
+  } catch (err) {
+    legend.textContent = "Camera error: " + err.message;
+  }
+}
 
-    async function detectLoop() {
-      if (video.readyState !== 4) { // wait until video is ready
-        requestAnimationFrame(detectLoop);
-        return;
-      }
-      const options = new faceapi.TinyFaceDetectorOptions();
-      const results = await faceapi.detectAllFaces(video, options).withFaceExpressions();
+// Draw faces and expressions
+async function detectLoop() {
+  if (video.readyState !== 4) {
+    requestAnimationFrame(detectLoop);
+    return;
+  }
 
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      faceapi.draw.drawDetections(canvas, results);
-      faceapi.draw.drawFaceExpressions(canvas, results);
+  const options = new faceapi.TinyFaceDetectorOptions();
+  const results = await faceapi.detectAllFaces(video, options).withFaceExpressions();
 
-      if (results.length > 0) {
-        const exprs = results[0].expressions;
-        const top = Object.keys(exprs).reduce((a,b) => exprs[a] > exprs[b] ? a : b);
-        legend.textContent = "Top expression: " + top;
-      } else {
-        legend.textContent = "No face detected";
-      }
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      requestAnimationFrame(detectLoop);
-    }
+  results.forEach(res => {
+    const { x, y, width, height } = res.detection.box;
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
 
-    setup();
-  </script>
+    // Get top expression and percentage
+    const exprs = res.expressions;
+    const top = Object.entries(exprs).reduce((a,b) => a[1] > b[1] ? a : b);
+    const text = `${top[0]}: ${(top[1]*100).toFixed(1)}%`;
+
+    ctx.fillStyle = '#0f0';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(text, x, y > 20 ? y-5 : y+15);
+  });
+
+  // Update legend
+  if (results.length === 0) legend.textContent = "No face detected";
+  else legend.textContent = `Detected ${results.length} face(s)`;
+
+  requestAnimationFrame(detectLoop);
+}
+
+setup();
+</script>
 </body>
 </html>
