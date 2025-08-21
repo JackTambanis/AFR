@@ -3,17 +3,51 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Facial Expression Detector</title>
+<title>iPad Facial Expression Detector</title>
 <style>
-  body { margin:0; display:flex; flex-direction:column; align-items:center; background:#111; color:#eee; font-family:sans-serif; }
-  #container { position:relative; width:90vw; max-width:640px; margin-top:20px; border:2px solid #444; overflow:hidden; }
-  video, canvas { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+  body {
+    margin:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    background:#111;
+    color:#eee;
+    font-family:sans-serif;
+  }
+  #container {
+    position:relative;
+    width:90vw;
+    max-width:640px;
+    margin-top:20px;
+    border:2px solid #444;
+    overflow:hidden;
+  }
+  video {
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    z-index:1;
+  }
+  canvas {
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    z-index:2;
+    pointer-events:none;
+    background:transparent;
+  }
   #legend { margin-top:16px; text-align:center; }
 </style>
 </head>
 <body>
 <h1>Facial Expression Detector</h1>
-<p>Allow camera access. Boxes your head in real time with expression labels.</p>
+<p>Allow camera access. Your head will be boxed with top expression + %.</p>
 
 <div id="container">
   <video id="video" autoplay muted playsinline></video>
@@ -27,6 +61,16 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('overlay');
 const legend = document.getElementById('legend');
 const ctx = canvas.getContext('2d');
+
+// Polyfill for older Safari
+if (!navigator.mediaDevices) navigator.mediaDevices = {};
+if (!navigator.mediaDevices.getUserMedia) {
+  navigator.mediaDevices.getUserMedia = function(constraints) {
+    const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    if (!getUserMedia) return Promise.reject(new Error("getUserMedia not supported"));
+    return new Promise((resolve, reject) => getUserMedia.call(navigator, constraints, resolve, reject));
+  };
+}
 
 async function setup() {
   try {
@@ -60,10 +104,13 @@ async function detectLoop() {
 
   results.forEach(res => {
     const { x, y, width, height } = res.detection.box;
+
+    // Draw green box
     ctx.strokeStyle = '#0f0';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, width, height);
 
+    // Draw top expression + percentage
     const exprs = res.expressions;
     const top = Object.entries(exprs).reduce((a,b) => a[1] > b[1] ? a : b);
     const text = `${top[0]}: ${(top[1]*100).toFixed(1)}%`;
