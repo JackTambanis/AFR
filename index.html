@@ -21,6 +21,7 @@
     margin-top:20px;
     border:2px solid #444;
     overflow:hidden;
+    background:#000;
   }
   video {
     position:absolute;
@@ -59,6 +60,7 @@
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('overlay');
+const container = document.getElementById('container');
 const legend = document.getElementById('legend');
 const ctx = canvas.getContext('2d');
 
@@ -83,12 +85,14 @@ async function setup() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
     video.srcObject = stream;
 
-    video.onloadedmetadata = () => {
+    // Wait until the video metadata is loaded
+    video.addEventListener('loadedmetadata', () => {
       video.play();
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      container.style.height = video.videoHeight + 'px'; // ensure container height
       detectLoop();
-    };
+    });
   } catch (err) {
     legend.textContent = "Camera error: " + err.message;
   }
