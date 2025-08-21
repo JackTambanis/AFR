@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Facial Expression Detector with Percentages</title>
+<title>Facial Expression Detector</title>
 <style>
   body { margin:0; display:flex; flex-direction:column; align-items:center; background:#111; color:#eee; font-family:sans-serif; }
   #container { position:relative; width:90vw; max-width:640px; margin-top:20px; border:2px solid #444; overflow:hidden; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 <h1>Facial Expression Detector</h1>
-<p>Allow camera access. Detects faces and shows top expressions.</p>
+<p>Allow camera access. Boxes your head in real time with expression labels.</p>
 
 <div id="container">
   <video id="video" autoplay muted playsinline></video>
@@ -28,17 +28,6 @@ const canvas = document.getElementById('overlay');
 const legend = document.getElementById('legend');
 const ctx = canvas.getContext('2d');
 
-// Polyfill for Safari
-if (!navigator.mediaDevices) navigator.mediaDevices = {};
-if (!navigator.mediaDevices.getUserMedia) {
-  navigator.mediaDevices.getUserMedia = function(constraints) {
-    const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-    if (!getUserMedia) return Promise.reject(new Error("getUserMedia not supported"));
-    return new Promise((resolve, reject) => getUserMedia.call(navigator, constraints, resolve, reject));
-  };
-}
-
-// Load models and start camera
 async function setup() {
   try {
     legend.textContent = "Loading models…";
@@ -61,12 +50,8 @@ async function setup() {
   }
 }
 
-// Draw faces and expressions
 async function detectLoop() {
-  if (video.readyState !== 4) {
-    requestAnimationFrame(detectLoop);
-    return;
-  }
+  if (video.readyState !== 4) { requestAnimationFrame(detectLoop); return; }
 
   const options = new faceapi.TinyFaceDetectorOptions();
   const results = await faceapi.detectAllFaces(video, options).withFaceExpressions();
@@ -79,7 +64,6 @@ async function detectLoop() {
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, width, height);
 
-    // Get top expression and percentage
     const exprs = res.expressions;
     const top = Object.entries(exprs).reduce((a,b) => a[1] > b[1] ? a : b);
     const text = `${top[0]}: ${(top[1]*100).toFixed(1)}%`;
@@ -89,9 +73,7 @@ async function detectLoop() {
     ctx.fillText(text, x, y > 20 ? y-5 : y+15);
   });
 
-  // Update legend
-  if (results.length === 0) legend.textContent = "No face detected";
-  else legend.textContent = `Detected ${results.length} face(s)`;
+  legend.textContent = results.length === 0 ? "No face detected" : `Detected ${results.length} face(s)`;
 
   requestAnimationFrame(detectLoop);
 }
