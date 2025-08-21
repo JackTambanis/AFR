@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>iPad Facial Expression Detector</title>
+<title>iPad Object Detector</title>
 <style>
   body {
     margin:0;
@@ -47,16 +47,19 @@
 </style>
 </head>
 <body>
-<h1>Facial Expression Detector</h1>
-<p>Allow camera access. Your head will be boxed with top expression + %.</p>
+<h1>iPad Object Detector</h1>
+<p>Allow camera access. Boxes and labels detected objects in real time.</p>
 
 <div id="container">
   <video id="video" autoplay muted playsinline></video>
   <canvas id="overlay"></canvas>
 </div>
-<div id="legend">Loading models…</div>
+<div id="legend">Loading model…</div>
 
-<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+<!-- TensorFlow.js and COCO-SSD -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('overlay');
@@ -64,69 +67,52 @@ const container = document.getElementById('container');
 const legend = document.getElementById('legend');
 const ctx = canvas.getContext('2d');
 
-// Polyfill for older Safari
-if (!navigator.mediaDevices) navigator.mediaDevices = {};
-if (!navigator.mediaDevices.getUserMedia) {
-  navigator.mediaDevices.getUserMedia = function(constraints) {
-    const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-    if (!getUserMedia) return Promise.reject(new Error("getUserMedia not supported"));
-    return new Promise((resolve, reject) => getUserMedia.call(navigator, constraints, resolve, reject));
-  };
-}
-
 async function setup() {
   try {
-    legend.textContent = "Loading models…";
-    const MODEL_URL = 'https://vladmandic.github.io/face-api/model/';
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
-    legend.textContent = "Models loaded. Starting camera…";
+    legend.textContent = "Loading COCO-SSD model…";
+    const model = await cocoSsd.load();
+    legend.textContent = "Model loaded. Starting camera…";
 
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     video.srcObject = stream;
 
-    // Wait until the video metadata is loaded
     video.addEventListener('loadedmetadata', () => {
       video.play();
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      container.style.height = video.videoHeight + 'px'; // ensure container height
-      detectLoop();
+      container.style.height = video.videoHeight + 'px';
+      detectLoop(model);
     });
-  } catch (err) {
+  } catch(err) {
     legend.textContent = "Camera error: " + err.message;
   }
 }
 
-async function detectLoop() {
-  if (video.readyState !== 4) { requestAnimationFrame(detectLoop); return; }
+async function detectLoop(model) {
+  if (video.readyState !== 4) { requestAnimationFrame(() => detectLoop(model)); return; }
 
-  const options = new faceapi.TinyFaceDetectorOptions();
-  const results = await faceapi.detectAllFaces(video, options).withFaceExpressions();
+  const predictions = await model.detect(video);
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  results.forEach(res => {
-    const { x, y, width, height } = res.detection.box;
+  predictions.forEach(pred => {
+    const [x, y, width, height] = pred.bbox;
 
-    // Draw green box
+    // Draw bounding box
     ctx.strokeStyle = '#0f0';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, width, height);
 
-    // Draw top expression + percentage
-    const exprs = res.expressions;
-    const top = Object.entries(exprs).reduce((a,b) => a[1] > b[1] ? a : b);
-    const text = `${top[0]}: ${(top[1]*100).toFixed(1)}%`;
-
+    // Draw label + score
+    const text = `${pred.class}: ${(pred.score*100).toFixed(1)}%`;
     ctx.fillStyle = '#0f0';
     ctx.font = '16px sans-serif';
     ctx.fillText(text, x, y > 20 ? y-5 : y+15);
   });
 
-  legend.textContent = results.length === 0 ? "No face detected" : `Detected ${results.length} face(s)`;
+  legend.textContent = predictions.length === 0 ? "No objects detected" : `Detected ${predictions.length} object(s)`;
 
-  requestAnimationFrame(detectLoop);
+  requestAnimationFrame(() => detectLoop(model));
 }
 
 setup();
