@@ -2,343 +2,300 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Webcam: Face Expressions + Object Detection (No age/race/gender)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Pan — Multi-face AI Expression Detector (Single File)</title>
+  <meta name="description" content="Real-time multi-face detection + expression labeling in the browser — no backend, works on iPad (Safari) and mobile browsers. Uses face-api.js models from a public CDN." />
   <style>
-    :root { --bg:#0e0f12; --panel:#14161a; --line:#2a2f39; --text:#e7e9ee; --muted:#99a1ad; }
-    *{box-sizing:border-box}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,#0b0c10,#0e0f12 30%,#101218);color:var(--text);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial}
-    .wrap{max-width:1100px;margin:24px auto;padding:16px}
-    h1{font-size:20px;margin:0 0 8px;letter-spacing:.3px}
-    p{color:var(--muted);margin:6px 0 14px}
-    .stage{position:relative;background:#07080c;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)}
-    video,canvas{display:block;width:100%;height:auto}
-    #overlay{position:absolute;left:0;top:0;pointer-events:none}
-    .hud{
-      position:absolute;left:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;z-index:3
+    :root{
+      --bg: #0f1724; --card:#0b1220; --accent:#7c3aed; --muted:#94a3b8; --white:#eef2ff;
     }
-    .chip{
-      background:rgba(20,22,26,.75);backdrop-filter: blur(8px);
-      border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--text);
-      display:flex;align-items:center;gap:8px
-    }
-    .controls{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 0}
-    button, label.toggle{
-      background:var(--panel);border:1px solid var(--line);color:var(--text);
-      border-radius:10px;padding:10px 14px;cursor:pointer
-    }
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .toggles{display:flex;gap:10px;align-items:center}
-    .legend{margin-top:10px;color:var(--muted)}
-    .r{border-left:3px solid #d9534f;padding-left:8px}
-    .g{border-left:3px solid #5cb85c;padding-left:8px}
-    .y{border-left:3px solid #f0ad4e;padding-left:8px}
-    .note{font-size:12px;color:#9aa3af;margin-top:8px}
-    .footer{margin-top:12px;color:#7f8793}
-    .meter{height:4px;border-radius:2px;background:#1f232b;overflow:hidden}
-    .meter > i{display:block;height:100%;background:#6aa3ff;width:0%}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#071024);color:var(--white);font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
+    .app{display:grid;grid-template-columns:1fr;grid-auto-rows:min-content;gap:12px;max-width:1100px;margin:18px auto;padding:12px}
+    header{display:flex;gap:12px;align-items:center}
+    h1{font-size:18px;margin:0}
+    .controls{display:flex;gap:8px;margin-left:auto;align-items:center}
+    button,select{background:linear-gradient(180deg,#0e1726,#051028);border:1px solid rgba(255,255,255,0.04);color:var(--white);padding:8px 10px;border-radius:10px;font-size:14px}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .stage{position:relative;border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.02);box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    video#inputVideo{width:100%;height:auto;display:block;object-fit:cover;transform:scaleX(-1)}
+    canvas#overlay{position:absolute;inset:0;pointer-events:none;transform:scaleX(-1)}
+    .status{padding:10px;color:var(--muted);font-size:13px}
+    .tips{font-size:13px;color:var(--muted)}
+    .small{font-size:12px;color:var(--muted)}
+    footer{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
+    .label-pill{background:rgba(0,0,0,0.6);padding:6px 8px;border-radius:999px;border:1px solid rgba(255,255,255,0.04);font-size:13px}
+    .toggle{display:flex;gap:6px;align-items:center}
+    .loader{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.08);border-top-color:var(--accent);animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .controls-row{display:flex;gap:8px;align-items:center}
+    .confidence{font-weight:600}
+    @media(min-width:900px){.app{grid-template-columns:1fr 360px;align-items:start}.stage{grid-column:1/2}.sidebar{grid-column:2/3}}
+    .sidebar{padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px}
+    .muted-block{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Live Facial Expressions + Object Detection</h1>
-    <p>
-      Shows webcam video with on-screen labels. Facial analysis estimates expressions only
-      (e.g., happy/neutral/surprised/angry)—<b>no age, race, or gender</b>.
-    </p>
-
-    <div class="controls">
-      <button id="btnStart">Start Camera</button>
-      <button id="btnStop" disabled>Stop</button>
-      <div class="toggles">
-        <label class="toggle"><input type="checkbox" id="toggleFaces" checked /> Faces</label>
-        <label class="toggle"><input type="checkbox" id="toggleExpr" checked /> Expressions</label>
-        <label class="toggle"><input type="checkbox" id="toggleObjs" checked /> Objects</label>
-        <label class="toggle"><input type="checkbox" id="toggleMirror" checked /> Mirror</label>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Pan — Multi-face AI Expression Detector</h1>
+        <div class="small">Client-only, runs on iPad & mobile. Uses face-api.js (TinyFaceDetector + FaceLandmark + Expressions).</div>
       </div>
-    </div>
-    <div class="legend">
-      <div class="g">Expressions are inferred from MediaPipe <i>blendshapes</i> (mouth/brow/eyes) locally on your device.</div>
-      <div class="y">On iPhone/iPad, you must tap “Start Camera” and use HTTPS (e.g., GitHub Pages).</div>
-    </div>
+      <div class="controls">
+        <div class="controls-row">
+          <label class="small label-pill" id="modelStatus">Loading models...</label>
+          <select id="facingSelect" title="Camera facing" aria-label="Camera facing">
+            <option value="user">Front camera</option>
+            <option value="environment">Back camera</option>
+          </select>
+          <button id="startBtn">Start</button>
+          <button id="snapBtn" class="secondary">Snapshot</button>
+        </div>
+      </div>
+    </header>
 
-    <div class="stage" id="stage">
-      <video id="webcam" playsinline muted></video>
+    <div class="stage">
+      <video id="inputVideo" autoplay muted playsinline></video>
       <canvas id="overlay"></canvas>
-      <div class="hud">
-        <div class="chip">FPS: <span id="fps">0</span></div>
-        <div class="chip">Resolution: <span id="res">–</span></div>
-        <div class="chip">Detections: <span id="det">0</span></div>
-      </div>
     </div>
 
-    <div class="note">Tip: If the camera appears black on iOS, ensure <b>Settings → Safari → Camera</b> is allowed and the page uses HTTPS.</div>
-    <div class="footer">Powered by MediaPipe Tasks (Face Landmarker & Object Detector), running fully in-browser.</div>
+    <div class="sidebar">
+      <div class="muted-block">
+        <div class="status"><span id="fps">—</span> FPS • <span id="facesCount">0</span> faces detected</div>
+        <div class="tips">Tip: for best results on iPad, allow camera access and switch to back camera if needed. Make sure faces are well-lit and mostly facing camera.</div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="muted-block">
+        <div style="display:flex;justify-content:space-between;align-items:center"><strong>Detection settings</strong><span class="small">(performance)</span></div>
+        <div style="height:8px"></div>
+        <label class="small">Input size: <span id="inputSizeLabel">160</span></label>
+        <input id="inputSizeRange" type="range" min="128" max="512" step="32" value="160" />
+        <div style="height:10px"></div>
+        <label class="small">Score threshold: <span id="scoreLabel">0.5</span></label>
+        <input id="scoreRange" type="range" min="0.2" max="0.8" step="0.05" value="0.5" />
+      </div>
+      <div style="height:12px"></div>
+      <div class="muted-block">
+        <strong>Expressions legend</strong>
+        <div class="small">happy • sad • angry • fearful • disgusted • surprised • neutral</div>
+      </div>
+      <footer>
+        <div class="small">Models from public CDN — no upload. Works offline after models cached.</div>
+        <div><button id="stopBtn" class="secondary">Stop</button></div>
+      </footer>
+    </div>
   </div>
 
-  <!-- App -->
-  <script type="module">
-    // Import MediaPipe Tasks Vision
-    import {
-      FaceLandmarker, ObjectDetector, FilesetResolver, DrawingUtils
-    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+<script src="https://unpkg.com/face-api.js/dist/face-api.min.js"></script>
+<script>
+  // Single-file pan face expression detector
+  const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+  const video = document.getElementById('inputVideo');
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  const modelStatus = document.getElementById('modelStatus');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const snapBtn = document.getElementById('snapBtn');
+  const facingSelect = document.getElementById('facingSelect');
+  const fpsLabel = document.getElementById('fps');
+  const facesCount = document.getElementById('facesCount');
+  const inputSizeRange = document.getElementById('inputSizeRange');
+  const scoreRange = document.getElementById('scoreRange');
+  const inputSizeLabel = document.getElementById('inputSizeLabel');
+  const scoreLabel = document.getElementById('scoreLabel');
 
-    const els = {
-      video: document.getElementById('webcam'),
-      canvas: document.getElementById('overlay'),
-      fps: document.getElementById('fps'),
-      res: document.getElementById('res'),
-      det: document.getElementById('det'),
-      btnStart: document.getElementById('btnStart'),
-      btnStop: document.getElementById('btnStop'),
-      toggleFaces: document.getElementById('toggleFaces'),
-      toggleExpr: document.getElementById('toggleExpr'),
-      toggleObjs: document.getElementById('toggleObjs'),
-      toggleMirror: document.getElementById('toggleMirror'),
-      stage: document.getElementById('stage')
-    };
+  let stream = null;
+  let running = false;
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let fps = 0;
 
-    let stream = null;
-    let faceLandmarker = null;
-    let objectDetector = null;
-    let running = false;
-    let lastTime = performance.now();
-    let fpsSMA = 0;
-    let detectionsCount = 0;
-    let objEveryNFrames = 2; // throttle object detector
-    let frameId = 0;
+  // detection options
+  function getTinyOptions(){
+    const inputSize = parseInt(inputSizeRange.value);
+    const scoreThreshold = parseFloat(scoreRange.value);
+    return new faceapi.TinyFaceDetectorOptions({inputSize, scoreThreshold});
+  }
 
-    const MP_WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-    // MediaPipe official hosted models:
-    const FACE_LANDMARKER_TASK = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-    const OBJECT_DETECTOR_MODEL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
+  inputSizeRange.addEventListener('input', ()=>{inputSizeLabel.textContent = inputSizeRange.value});
+  scoreRange.addEventListener('input', ()=>{scoreLabel.textContent = scoreRange.value});
 
-    function lerp(a,b,t){return a+(b-a)*t;}
-
-    async function loadModels(){
-      const fileset = await FilesetResolver.forVisionTasks(MP_WASM_BASE);
-      faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: FACE_LANDMARKER_TASK },
-        runningMode: "VIDEO",
-        numFaces: 4,
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: false
-      });
-      objectDetector = await ObjectDetector.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: OBJECT_DETECTOR_MODEL },
-        runningMode: "VIDEO",
-        scoreThreshold: 0.5,
-        maxResults: 10
-      });
+  async function loadModels(){
+    modelStatus.textContent = 'Loading models...';
+    try{
+      // tiny_face_detector, face_landmark_68, face_expression
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+      ]);
+      modelStatus.innerHTML = '<span class="label-pill">Models loaded</span>';
+    }catch(e){
+      console.error('Model load error', e);
+      modelStatus.textContent = 'Model load failed — check network or open via HTTPS.';
     }
+  }
 
-    function fitCanvas(){
-      const rect = els.stage.getBoundingClientRect();
-      els.canvas.width = rect.width;
-      els.canvas.height = rect.width * (els.video.videoHeight / Math.max(1, els.video.videoWidth));
-      // Set video CSS transform for mirror
-      els.video.style.transform = els.toggleMirror.checked ? "scaleX(-1)" : "none";
-      els.canvas.style.transform = els.toggleMirror.checked ? "scaleX(-1)" : "none";
-      els.res.textContent = `${els.video.videoWidth}×${els.video.videoHeight}`;
-    }
-
-    async function startCamera(){
-      stopAll();
-      try{
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: "user" // selfie camera on mobile
-          },
-          audio: false
-        });
-      }catch(err){
-        alert("Camera access failed: " + err.message + "\n\nOn iOS, open via HTTPS and allow camera in Settings.");
-        throw err;
-      }
-      els.video.srcObject = stream;
-      await els.video.play();
-      fitCanvas();
-      window.addEventListener('resize', fitCanvas);
+  async function startCamera(){
+    if(running) return;
+    const facingMode = facingSelect.value || 'user';
+    const constraints = {audio:false, video:{facingMode, width:{ideal:1280}, height:{ideal:720}}};
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
       running = true;
-      loop();
+      canvas.width = video.videoWidth || video.clientWidth || 640;
+      canvas.height = video.videoHeight || video.clientHeight || 480;
+      runDetectionLoop();
+    }catch(err){
+      console.error('Camera error', err);
+      alert('Unable to access camera. Make sure you are on HTTPS and allowed camera access.');
+    }
+  }
+
+  function stopCamera(){
+    running = false;
+    if(stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream = null;
+    }
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    facesCount.textContent = '0';
+    fpsLabel.textContent = '—';
+  }
+
+  async function runDetectionLoop(){
+    if(!running) return;
+    const now = performance.now();
+    frameCount++;
+    if(now - lastTime >= 1000){
+      fps = Math.round((frameCount*1000)/(now-lastTime));
+      fpsLabel.textContent = fps;
+      frameCount = 0; lastTime = now;
     }
 
-    function stopAll(){
-      running = false;
-      if (stream){
-        stream.getTracks().forEach(t=>t.stop());
-        stream = null;
-      }
-      window.removeEventListener('resize', fitCanvas);
-      els.btnStart.disabled = false;
-      els.btnStop.disabled = true;
+    // ensure canvas size matches video size
+    if(canvas.width !== video.videoWidth || canvas.height !== video.videoHeight){
+      canvas.width = video.videoWidth || video.clientWidth;
+      canvas.height = video.videoHeight || video.clientHeight;
     }
 
-    function drawBox(ctx, x, y, w, h, label, score, style="face"){
-      ctx.save();
-      const pad = 2;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = style==="obj" ? "#88e" : "#5cb85c";
-      ctx.fillStyle = "rgba(0,0,0,.45)";
-      ctx.beginPath(); ctx.rect(x,y,w,h); ctx.stroke();
+    const options = getTinyOptions();
+    // detect all faces with expressions and landmarks
+    const results = await faceapi.detectAllFaces(video, options).withFaceLandmarks().withFaceExpressions();
 
-      const text = score!=null ? `${label} ${(score*100).toFixed(0)}%` : label;
-      ctx.font = "13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
-      const m = ctx.measureText(text);
-      const boxW = m.width + 12, boxH = 20;
-      const tx = Math.max(0, Math.min(x, ctx.canvas.width - boxW));
-      const ty = Math.max(0, y - boxH - 6);
-      ctx.fillRect(tx, ty, boxW, boxH);
-      ctx.strokeStyle = "rgba(255,255,255,.2)";
-      ctx.strokeRect(tx+.5, ty+.5, boxW-1, boxH-1);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(text, tx + 6, ty + 14);
-      ctx.restore();
-    }
+    // clear
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // Map MediaPipe blendshapes to a simple emotion label
-    function estimateEmotion(blendshapes){
-      // blendshapes: array of {categories:[{categoryName, score}]}
-      if (!blendshapes || !blendshapes.length) return {emotion:"neutral", conf:0.5};
-      const cat = {};
-      for (const c of blendshapes[0].categories){
-        cat[c.categoryName] = c.score;
-      }
-      const smile = ((cat["mouthSmileLeft"]||0) + (cat["mouthSmileRight"]||0))/2;
-      const jawOpen = (cat["jawOpen"]||0);
-      const browUp = (cat["browInnerUp"]||0);
-      const browDown = ((cat["browDownLeft"]||0)+(cat["browDownRight"]||0))/2;
-      const eyeSquint = ((cat["eyeSquintLeft"]||0)+(cat["eyeSquintRight"]||0))/2;
-      const mouthFrown = ((cat["mouthFrownLeft"]||0)+(cat["mouthFrownRight"]||0))/2;
+    // draw each detection
+    facesCount.textContent = results.length;
 
-      // Simple rules with soft confidence
-      let emotion = "neutral";
-      let conf = 0.5;
-      if (smile > 0.55 && eyeSquint > 0.2) { emotion = "happy"; conf = lerp(0.6, 0.95, Math.min(1, (smile-0.55)/0.4)); }
-      else if (jawOpen > 0.55 && browUp > 0.3) { emotion = "surprised"; conf = lerp(0.6, 0.95, Math.min(1, (jawOpen-0.55)/0.4)); }
-      else if (browDown > 0.45 && mouthFrown > 0.25) { emotion = "angry"; conf = lerp(0.6, 0.9, Math.min(1, (browDown-0.45)/0.4)); }
-      else if (mouthFrown > 0.35 && smile < 0.25) { emotion = "sad"; conf = lerp(0.6, 0.88, Math.min(1, (mouthFrown-0.35)/0.4)); }
-      else { emotion = "neutral"; conf = 0.6 - 0.2*Math.random(); }
-      return {emotion, conf};
-    }
+    results.forEach((res, i)=>{
+      const {detection, landmarks, expressions} = res;
+      const box = detection.box;
+      const x = box.x; const y = box.y; const w = box.width; const h = box.height;
 
-    async function loop(){
-      if (!running) return;
-      const now = performance.now();
-      const dt = now - lastTime;
-      lastTime = now;
-      const instFps = 1000 / Math.max(1, dt);
-      fpsSMA = fpsSMA ? lerp(fpsSMA, instFps, 0.15) : instFps;
-      els.fps.textContent = Math.round(fpsSMA);
+      // box
+      ctx.lineWidth = Math.max(2, Math.round(canvas.width/640));
+      ctx.strokeStyle = 'rgba(124,58,237,0.9)';
+      ctx.strokeRect(x, y, w, h);
 
-      const ctx = els.canvas.getContext('2d');
-      const video = els.video;
+      // label — best expression
+      const expr = bestExpression(expressions);
+      const conf = Math.round(expressions[expr]*100);
+      const label = `${expr} (${conf}%)`;
 
-      // Resize canvas if video size changes
-      if (els.canvas.width !== video.clientWidth){
-        fitCanvas();
-      }
-      // Draw video frame to canvas background (so we can mirror both consistently)
-      ctx.clearRect(0,0,els.canvas.width, els.canvas.height);
+      const padding = 6; const fontSize = Math.max(12, Math.round(canvas.width/480));
+      ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+      ctx.textBaseline = 'top';
+      const textW = ctx.measureText(label).width;
+      const labelX = x;
+      const labelY = Math.max(0, y - fontSize - padding);
 
-      // Compute scaling from video pixel space to canvas space
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const cw = els.canvas.width, ch = els.canvas.height;
-      const scaleX = cw / vw, scaleY = ch / vh;
+      // background for text
+      ctx.fillStyle = 'rgba(6,10,20,0.7)';
+      roundRect(ctx, labelX - 2, labelY - 4, textW + padding*2, fontSize + padding, 6, true, false);
 
-      let faces = null, objs = null;
+      // text
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, labelX + padding - 2, labelY + 2);
 
-      if (faceLandmarker && els.toggleFaces.checked){
-        faces = faceLandmarker.detectForVideo(video, now);
-      }
-      if (objectDetector && els.toggleObjs.checked && (frameId % objEveryNFrames === 0)){
-        objs = objectDetector.detectForVideo(video, now);
-      }
-      frameId++;
-
-      detectionsCount = 0;
-
-      // Draw Objects
-      if (objs && objs.detections){
-        for (const d of objs.detections){
-          const b = d.boundingBox; // {originX, originY, width, height} in video px
-          const x = b.originX * scaleX, y = b.originY * scaleY, w = b.width * scaleX, h = b.height * scaleY;
-          const cat = d.categories && d.categories[0] ? d.categories[0] : null;
-          const label = cat ? cat.categoryName : "object";
-          const score = cat ? cat.score : null;
-          drawBox(ctx, x, y, w, h, label, score, "obj");
-          detectionsCount++;
-        }
+      // draw landmarks (optional small dots)
+      const pts = landmarks.positions;
+      ctx.fillStyle = 'rgba(124,58,237,0.9)';
+      for(let p=0;p<pts.length;p+=4){
+        const pt = pts[p];
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, Math.max(1, fontSize/6), 0, Math.PI*2); ctx.fill();
       }
 
-      // Draw Faces + Expressions
-      if (faces && faces.faceLandmarks && faces.faceBlendshapes){
-        const draw = new DrawingUtils(ctx);
-        faces.faceLandmarks.forEach((lm, idx) => {
-          // Landmarks polyline (subtle)
-          ctx.save();
-          ctx.globalAlpha = 0.35;
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = "#5cb85c";
-          draw.drawConnectors(lm, FaceLandmarker.FACE_LANDMARKS_TESSELATION);
-          ctx.restore();
-
-          // Bounding box from landmarks
-          let minX=1e9, minY=1e9, maxX=-1e9, maxY=-1e9;
-          for (const p of lm){
-            minX = Math.min(minX, p.x * cw);
-            minY = Math.min(minY, p.y * ch);
-            maxX = Math.max(maxX, p.x * cw);
-            maxY = Math.max(maxY, p.y * ch);
-          }
-          const pad = 8;
-          const x = Math.max(0, minX - pad);
-          const y = Math.max(0, minY - pad);
-          const w = Math.min(cw - x, (maxX - minX) + pad*2);
-          const h = Math.min(ch - y, (maxY - minY) + pad*2);
-
-          let label = "face";
-          let conf = null;
-          if (els.toggleExpr.checked){
-            const {emotion, conf: econf} = estimateEmotion(faces.faceBlendshapes[idx]?.categories ? [faces.faceBlendshapes[idx]] : faces.faceBlendshapes);
-            label = `${emotion}`;
-            conf = econf;
-          }
-          drawBox(ctx, x, y, w, h, label, conf, "face");
-          detectionsCount++;
-        });
-      }
-
-      els.det.textContent = detectionsCount.toString();
-
-      // schedule next frame
-      requestAnimationFrame(loop);
-    }
-
-    // UI wiring
-    els.btnStart.addEventListener('click', async ()=>{
-      els.btnStart.disabled = true;
-      try{
-        if (!faceLandmarker || !objectDetector){
-          await loadModels();
-        }
-        await startCamera();
-        els.btnStop.disabled = false;
-      }catch(e){
-        els.btnStart.disabled = false;
-        console.error(e);
-      }
     });
-    els.btnStop.addEventListener('click', stopAll);
-    els.toggleMirror.addEventListener('change', fitCanvas);
 
-    // Helpful: pause when tab is hidden to save battery
-    document.addEventListener('visibilitychange', ()=>{
-      if (document.hidden){ running = false; }
-      else if (stream){ running = true; loop(); }
-    });
-  </script>
+    // next frame
+    requestAnimationFrame(runDetectionLoop);
+  }
+
+  function bestExpression(exp){
+    let best='neutral'; let bestScore=0;
+    for(const k in exp){ if(exp[k] > bestScore){bestScore = exp[k]; best = k;} }
+    return best;
+  }
+
+  function roundRect(ctx, x, y, w, h, r, fill, stroke){
+    if(typeof r === 'undefined') r=5; if(typeof r === 'number') r={tl:r,tr:r,br:r,bl:r};
+    ctx.beginPath(); ctx.moveTo(x+r.tl, y); ctx.lineTo(x+w-r.tr, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r.tr);
+    ctx.lineTo(x+w, y+h-r.br); ctx.quadraticCurveTo(x+w, y+h, x+w-r.br, y+h);
+    ctx.lineTo(x+r.bl, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r.bl);
+    ctx.lineTo(x, y+r.tl); ctx.quadraticCurveTo(x, y, x+r.tl, y); ctx.closePath();
+    if(fill) ctx.fill(); if(stroke) ctx.stroke();
+  }
+
+  // snapshot
+  snapBtn.addEventListener('click', ()=>{
+    if(!video || video.readyState < 2) return alert('Video not ready');
+    const w = canvas.width; const h = canvas.height;
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h; const tctx = tmp.getContext('2d');
+    // copy video (mirrored) correctly by drawing flipped
+    tctx.save(); tctx.scale(-1,1); tctx.drawImage(video, -w, 0, w, h); tctx.restore();
+    // overlay (draw detection canvas as well)
+    tctx.drawImage(canvas, 0, 0);
+    const url = tmp.toDataURL('image/png');
+    const a = document.createElement('a'); a.href = url; a.download = 'pan-snapshot.png'; a.click();
+  });
+
+  startBtn.addEventListener('click', async ()=>{
+    if(!faceapi.nets.tinyFaceDetector.params) await loadModels();
+    await startCamera();
+  });
+  stopBtn.addEventListener('click', ()=>stopCamera());
+
+  // load models at startup but don't open camera until user presses start (important on iOS)
+  loadModels();
+
+  // handle page visibility / stopping
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopCamera(); });
+
+  // helpers: handle orientation/resizing
+  window.addEventListener('resize', ()=>{
+    if(video && video.videoWidth){ canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+  });
+
+  // extra: allow switching camera while running
+  facingSelect.addEventListener('change', async ()=>{
+    if(running){ stopCamera(); await startCamera(); }
+  });
+
+  // friendly UX: warn user for iOS specifics
+  (function iOSNotice(){
+    const ua = navigator.userAgent || '';
+    if(/iPhone|iPad|iPod/.test(ua)){
+      const div = document.createElement('div'); div.className='small'; div.style.marginTop='8px'; div.style.color='var(--muted)';
+      div.textContent = 'Note: iOS Safari requires user gesture to start camera and works best in Safari. Add to Home Screen for fullscreen.';
+      document.querySelector('.sidebar').prepend(div);
+    }
+  })();
+
+</script>
 </body>
 </html>
