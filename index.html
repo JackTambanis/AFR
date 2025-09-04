@@ -1,41 +1,78 @@
-<!-- Load face-api first -->
-<script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
-
-<!-- Then run your code AFTER -->
-<script>
-  window.addEventListener('DOMContentLoaded', async () => {
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const ctx = overlay.getContext('2d');
-
-    // Load models directly from CDN (no self-hosting required)
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
-      faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights')
-    ]);
-
-    startVideo();
-
-    function startVideo() {
-      navigator.mediaDevices.getUserMedia({ video: {} })
-        .then(stream => {
-          video.srcObject = stream;
-        })
-        .catch(err => console.error('Error accessing webcam:', err));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face & Expression Detection</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
     }
+    video {
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #container {
+      position: relative;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Face & Expression Detection</h1>
+  <div id="container">
+    <video id="video" width="720" height="560" autoplay muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
 
-    video.addEventListener('play', () => {
-      overlay.width = video.width;
-      overlay.height = video.height;
+  <!-- Load scripts at the end of body -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const video = document.getElementById('video');
+      const overlay = document.getElementById('overlay');
+      const ctx = overlay.getContext('2d');
 
-      setInterval(async () => {
-        const detections = await faceapi
-          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-          .withFaceExpressions();
-        ctx.clearRect(0, 0, overlay.width, overlay.height);
-        faceapi.draw.drawDetections(overlay, detections);
-        faceapi.draw.drawFaceExpressions(overlay, detections);
-      }, 100);
+      // Load models from CDN
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
+        faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights')
+      ]);
+
+      // Start webcam
+      navigator.mediaDevices.getUserMedia({ video: {} })
+        .then(stream => video.srcObject = stream)
+        .catch(err => console.error('Error accessing webcam:', err));
+
+      // On video play, start detection loop
+      video.addEventListener('play', () => {
+        overlay.width = video.width;
+        overlay.height = video.height;
+
+        setInterval(async () => {
+          const detections = await faceapi
+            .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceExpressions();
+
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          faceapi.draw.drawDetections(overlay, detections);
+          faceapi.draw.drawFaceExpressions(overlay, detections);
+        }, 100);
+      });
     });
-  });
-</script>
+  </script>
+</body>
+</html>
