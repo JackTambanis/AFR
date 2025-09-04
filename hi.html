@@ -70,17 +70,27 @@ window.addEventListener('DOMContentLoaded', async () => {
     return current.map((p, i) => ({ x: lerp(previous[i].x, p.x, t), y: lerp(previous[i].y, p.y, t) }));
   }
 
-  video.addEventListener('play', () => {
-    function updateCanvasSizes(){
-      const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
-      overlayLeft.width = displaySize.width;
-      overlayLeft.height = displaySize.height;
-      overlayRight.width = displaySize.width;
-      overlayRight.height = displaySize.height;
-      return displaySize;
-    }
+  const featureIndices = {
+    jaw: [...Array(17).keys()],
+    leftEyebrow: [...Array(5).keys()].map(i => i + 17),
+    rightEyebrow: [...Array(5).keys()].map(i => i + 22),
+    nose: [...Array(9).keys()].map(i => i + 27),
+    leftEye: [...Array(6).keys()].map(i => i + 36),
+    rightEye: [...Array(6).keys()].map(i => i + 42),
+    mouth: [...Array(20).keys()].map(i => i + 48)
+  };
 
-    const displaySize = updateCanvasSizes();
+  function extractFeature(smoothed, indices){
+    return indices.map(i => smoothed[i]);
+  }
+
+  video.addEventListener('play', () => {
+    const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
+    overlayLeft.width = displaySize.width;
+    overlayLeft.height = displaySize.height;
+    overlayRight.width = displaySize.width;
+    overlayRight.height = displaySize.height;
+
     faceapi.matchDimensions(overlayLeft, displaySize);
     faceapi.matchDimensions(overlayRight, displaySize);
 
@@ -99,7 +109,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       faceapi.draw.drawDetections(overlayLeft, resized);
       faceapi.draw.drawFaceExpressions(overlayLeft, resized);
 
-      // Right: wireframe face
       resized.forEach(det => {
         const lm = det.landmarks;
         const smoothed = smoothLandmarks(lm.positions, previousLandmarks);
@@ -118,37 +127,37 @@ window.addEventListener('DOMContentLoaded', async () => {
         const offsetY = (overlayRight.height - (maxY - minY) * scaleY)/2 - minY*scaleY;
 
         function drawLine(points, color='#0f0', width=2){
+          if(points.length === 0) return;
           ctxRight.beginPath();
           ctxRight.strokeStyle = color;
           ctxRight.lineWidth = width;
-          ctxRight.moveTo(points[0].x*scaleX + offsetX, points[0].y*scaleY + offsetY);
+          ctxRight.moveTo(points[0].x*scaleX+offsetX, points[0].y*scaleY+offsetY);
           for(let i=1;i<points.length;i++){
-            ctxRight.lineTo(points[i].x*scaleX + offsetX, points[i].y*scaleY + offsetY);
+            ctxRight.lineTo(points[i].x*scaleX+offsetX, points[i].y*scaleY+offsetY);
           }
           ctxRight.stroke();
         }
 
-        // Eyebrow raise detection
-        const leftEyebrow = lm.getLeftEyebrow();
-        const rightEyebrow = lm.getRightEyebrow();
-        const leftEye = lm.getLeftEye();
-        const rightEye = lm.getRightEye();
-        const eyebrowRaiseLeft = leftEye[1].y - leftEyebrow[4].y;
-        const eyebrowRaiseRight = rightEye[1].y - rightEyebrow[4].y;
-        const eyebrowColor = (eyebrowRaiseLeft > 5 || eyebrowRaiseRight > 5) ? '#ff0' : '#0f0';
+        const leftEyebrow = extractFeature(smoothed, featureIndices.leftEyebrow);
+        const rightEyebrow = extractFeature(smoothed, featureIndices.rightEyebrow);
+        const leftEye = extractFeature(smoothed, featureIndices.leftEye);
+        const rightEye = extractFeature(smoothed, featureIndices.rightEye);
+        const jaw = extractFeature(smoothed, featureIndices.jaw);
+        const nose = extractFeature(smoothed, featureIndices.nose);
+        const mouth = extractFeature(smoothed, featureIndices.mouth);
 
-        // Mouth open detection
-        const mouth = lm.getMouth();
-        const mouthOpen = mouth[13].y - mouth[19].y;
-        const mouthColor = mouthOpen > 5 ? '#f00' : '#0f0';
+        const eyebrowRaise = (leftEye[1].y - leftEyebrow[4].y) > 5 || (rightEye[1].y - rightEyebrow[4].y) > 5;
+        const eyebrowColor = eyebrowRaise ? '#ff0' : '#0f0';
 
-        // Draw features
-        drawLine(lm.getJawOutline());
+        const mouthOpen = (mouth[13].y - mouth[19].y) > 5;
+        const mouthColor = mouthOpen ? '#f00' : '#0f0';
+
+        drawLine(jaw);
         drawLine(leftEyebrow, eyebrowColor);
         drawLine(rightEyebrow, eyebrowColor);
         drawLine(leftEye);
         drawLine(rightEye);
-        drawLine(lm.getNose());
+        drawLine(nose);
         drawLine(mouth, mouthColor);
       });
     }, 50);
