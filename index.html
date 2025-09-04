@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face & Expression Detection</title>
+  <title>Face & Expression + Landmark Tracking</title>
   <style>
     body {
       margin: 0;
@@ -32,13 +32,12 @@
   </style>
 </head>
 <body>
-  <h1>Face & Expression Detection</h1>
+  <h1>Face, Expression & Landmark Tracking</h1>
   <div id="container">
     <video id="video" width="720" height="560" autoplay muted></video>
     <canvas id="overlay"></canvas>
   </div>
 
-  <!-- Load scripts at the end of body -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
   <script>
     window.addEventListener('DOMContentLoaded', async () => {
@@ -49,7 +48,8 @@
       // Load models from CDN
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
-        faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights')
+        faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
+        faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights')
       ]);
 
       // Start webcam
@@ -57,19 +57,27 @@
         .then(stream => video.srcObject = stream)
         .catch(err => console.error('Error accessing webcam:', err));
 
-      // On video play, start detection loop
       video.addEventListener('play', () => {
         overlay.width = video.width;
         overlay.height = video.height;
+        const displaySize = { width: video.width, height: video.height };
+        faceapi.matchDimensions(overlay, displaySize);
 
         setInterval(async () => {
           const detections = await faceapi
-            .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+            .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+            .withFaceLandmarks()
             .withFaceExpressions();
 
           ctx.clearRect(0, 0, overlay.width, overlay.height);
-          faceapi.draw.drawDetections(overlay, detections);
-          faceapi.draw.drawFaceExpressions(overlay, detections);
+          const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+          // Draw bounding boxes
+          faceapi.draw.drawDetections(overlay, resizedDetections);
+          // Draw expression labels
+          faceapi.draw.drawFaceExpressions(overlay, resizedDetections);
+          // Draw landmarks (eyes, nose, mouth, jaw)
+          faceapi.draw.drawFaceLandmarks(overlay, resizedDetections);
         }, 100);
       });
     });
