@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Face & Wireframe Split</title>
+<title>Face & Expression Wireframe</title>
 <style>
   html, body {
     margin: 0;
@@ -62,8 +62,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     .then(stream => video.srcObject = stream)
     .catch(err => console.error('Error accessing webcam:', err));
 
+  let previousLandmarks = null;
+
+  function lerp(a, b, t){ return a + (b - a) * t; }
+  function smoothLandmarks(current, previous, t=0.5){
+    if(!previous) return current;
+    return current.map((p, i) => ({ x: lerp(previous[i].x, p.x, t), y: lerp(previous[i].y, p.y, t) }));
+  }
+
   video.addEventListener('play', () => {
-    // Use displayed video size to align boxes correctly
     const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
     overlayLeft.width = displaySize.width;
     overlayLeft.height = displaySize.height;
@@ -88,41 +95,56 @@ window.addEventListener('DOMContentLoaded', async () => {
       faceapi.draw.drawDetections(overlayLeft, resized);
       faceapi.draw.drawFaceExpressions(overlayLeft, resized);
 
-      // Right: wireframe face
+      // Right: wireframe with smoothing and expression highlights
       resized.forEach(det => {
-        const lm = det.landmarks;
-        const allPoints = lm.positions;
-        const minX = Math.min(...allPoints.map(p=>p.x));
-        const minY = Math.min(...allPoints.map(p=>p.y));
-        const maxX = Math.max(...allPoints.map(p=>p.x));
-        const maxY = Math.max(...allPoints.map(p=>p.y));
+        let lm = det.landmarks;
+        const smoothed = smoothLandmarks(lm.positions, previousLandmarks);
+        previousLandmarks = smoothed;
+
+        const xs = smoothed.map(p => p.x);
+        const ys = smoothed.map(p => p.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs);
+        const maxY = Math.max(...ys);
 
         const scaleX = overlayRight.width / (maxX - minX) * 0.8;
         const scaleY = overlayRight.height / (maxY - minY) * 0.8;
-        const offsetX = (overlayRight.width - (maxX - minX) * scaleX)/2 - minX * scaleX;
-        const offsetY = (overlayRight.height - (maxY - minY) * scaleY)/2 - minY * scaleY;
+        const offsetX = (overlayRight.width - (maxX - minX) * scaleX)/2 - minX*scaleX;
+        const offsetY = (overlayRight.height - (maxY - minY) * scaleY)/2 - minY*scaleY;
 
-        function drawLine(points){
+        function drawLine(points, color='#0f0', width=2){
           ctxRight.beginPath();
-          ctxRight.moveTo(points[0].x*scaleX + offsetX, points[0].y*scaleY + offsetY);
+          ctxRight.strokeStyle = color;
+          ctxRight.lineWidth = width;
+          ctxRight.moveTo(points[0].x*scaleX+offsetX, points[0].y*scaleY+offsetY);
           for(let i=1;i<points.length;i++){
-            ctxRight.lineTo(points[i].x*scaleX + offsetX, points[i].y*scaleY + offsetY);
+            ctxRight.lineTo(points[i].x*scaleX+offsetX, points[i].y*scaleY+offsetY);
           }
           ctxRight.stroke();
         }
 
-        ctxRight.strokeStyle = '#0f0';
-        ctxRight.lineWidth = 2;
+        // Eyebrow raise detection
+        const leftEyebrow = lm.getLeftEyebrow();
+        const leftEye = lm.getLeftEye();
+        const eyebrowRaise = leftEye[1].y - leftEyebrow[4].y;
+        const eyebrowColor = eyebrowRaise > 5 ? '#ff0' : '#0f0';
 
+        // Mouth open detection
+        const mouth = lm.getMouth();
+        const mouthOpen = mouth[13].y - mouth[19].y;
+        const mouthColor = mouthOpen > 5 ? '#f00' : '#0f0';
+
+        // Draw all features
         drawLine(lm.getJawOutline());
+        drawLine(leftEyebrow, eyebrowColor);
+        drawLine(lm.getRightEyebrow(), eyebrowColor);
         drawLine(lm.getLeftEye());
         drawLine(lm.getRightEye());
-        drawLine(lm.getLeftEyebrow());
-        drawLine(lm.getRightEyebrow());
         drawLine(lm.getNose());
-        drawLine(lm.getMouth());
+        drawLine(mouth, mouthColor);
       });
-    }, 100);
+    }, 50); // faster interval for smoother updates
   });
 });
 </script>
