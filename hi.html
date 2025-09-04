@@ -5,31 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Face & Expression Wireframe</title>
 <style>
-  html, body {
-    margin: 0;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-  }
-  #container {
-    display: flex;
-    width: 100%;
-    height: 100%;
-  }
-  #left, #right {
-    position: relative;
-    flex: 1;
-  }
-  #video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #container { display: flex; width: 100%; height: 100%; }
+  #left, #right { position: relative; flex: 1; }
+  #video { width: 100%; height: 100%; object-fit: cover; }
+  canvas { position: absolute; top: 0; left: 0; }
 </style>
 </head>
 <body>
@@ -62,10 +42,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     .then(stream => video.srcObject = stream)
     .catch(err => console.error('Error accessing webcam:', err));
 
-  let previousLandmarks = null;
+  let previousJaw = null;
 
   function lerp(a, b, t){ return a + (b - a) * t; }
-  function smoothLandmarks(current, previous, t=0.5){
+  function smoothLandmarks(current, previous, t=0.3){
     if(!previous) return current.map(p => ({x: p.x, y: p.y}));
     return current.map((p, i) => ({ x: lerp(previous[i].x, p.x, t), y: lerp(previous[i].y, p.y, t) }));
   }
@@ -80,9 +60,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     mouth: [...Array(20).keys()].map(i => i + 48)
   };
 
-  function extractFeature(smoothed, indices){
-    return indices.map(i => smoothed[i]);
-  }
+  function extractFeature(points, indices){ return indices.map(i => points[i]); }
 
   video.addEventListener('play', () => {
     const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
@@ -92,7 +70,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     overlayRight.height = displaySize.height;
 
     faceapi.matchDimensions(overlayLeft, displaySize);
-    faceapi.matchDimensions(overlayRight, displaySize);
 
     setInterval(async () => {
       const detections = await faceapi
@@ -105,62 +82,43 @@ window.addEventListener('DOMContentLoaded', async () => {
       ctxLeft.clearRect(0,0,overlayLeft.width, overlayLeft.height);
       ctxRight.clearRect(0,0,overlayRight.width, overlayRight.height);
 
-      // Left: bounding boxes + expressions
       faceapi.draw.drawDetections(overlayLeft, resized);
       faceapi.draw.drawFaceExpressions(overlayLeft, resized);
 
       resized.forEach(det => {
         const lm = det.landmarks;
-        const smoothed = smoothLandmarks(lm.positions, previousLandmarks);
-        previousLandmarks = smoothed;
+        const smoothedJaw = smoothLandmarks(extractFeature(lm.positions, featureIndices.jaw), previousJaw, 0.2);
+        previousJaw = smoothedJaw;
 
-        const xs = smoothed.map(p => p.x);
-        const ys = smoothed.map(p => p.y);
-        const minX = Math.min(...xs);
-        const minY = Math.min(...ys);
-        const maxX = Math.max(...xs);
-        const maxY = Math.max(...ys);
-
-        const scaleX = overlayRight.width / (maxX - minX) * 0.8;
-        const scaleY = overlayRight.height / (maxY - minY) * 0.8;
-        const offsetX = (overlayRight.width - (maxX - minX) * scaleX)/2 - minX*scaleX;
-        const offsetY = (overlayRight.height - (maxY - minY) * scaleY)/2 - minY*scaleY;
+        const leftEyebrow = extractFeature(lm.positions, featureIndices.leftEyebrow);
+        const rightEyebrow = extractFeature(lm.positions, featureIndices.rightEyebrow);
+        const leftEye = extractFeature(lm.positions, featureIndices.leftEye);
+        const rightEye = extractFeature(lm.positions, featureIndices.rightEye);
+        const nose = extractFeature(lm.positions, featureIndices.nose);
+        const mouth = extractFeature(lm.positions, featureIndices.mouth);
 
         function drawLine(points, color='#0f0', width=2){
           if(points.length === 0) return;
           ctxRight.beginPath();
           ctxRight.strokeStyle = color;
           ctxRight.lineWidth = width;
-          ctxRight.moveTo(points[0].x*scaleX+offsetX, points[0].y*scaleY+offsetY);
+          ctxRight.moveTo(points[0].x, points[0].y);
           for(let i=1;i<points.length;i++){
-            ctxRight.lineTo(points[i].x*scaleX+offsetX, points[i].y*scaleY+offsetY);
+            ctxRight.lineTo(points[i].x, points[i].y);
           }
           ctxRight.stroke();
         }
 
-        const leftEyebrow = extractFeature(smoothed, featureIndices.leftEyebrow);
-        const rightEyebrow = extractFeature(smoothed, featureIndices.rightEyebrow);
-        const leftEye = extractFeature(smoothed, featureIndices.leftEye);
-        const rightEye = extractFeature(smoothed, featureIndices.rightEye);
-        const jaw = extractFeature(smoothed, featureIndices.jaw);
-        const nose = extractFeature(smoothed, featureIndices.nose);
-        const mouth = extractFeature(smoothed, featureIndices.mouth);
-
-        const eyebrowRaise = (leftEye[1].y - leftEyebrow[4].y) > 5 || (rightEye[1].y - rightEyebrow[4].y) > 5;
-        const eyebrowColor = eyebrowRaise ? '#ff0' : '#0f0';
-
-        const mouthOpen = (mouth[13].y - mouth[19].y) > 5;
-        const mouthColor = mouthOpen ? '#f00' : '#0f0';
-
-        drawLine(jaw);
-        drawLine(leftEyebrow, eyebrowColor);
-        drawLine(rightEyebrow, eyebrowColor);
+        // Draw all features with minimal smoothing on expressive parts
+        drawLine(smoothedJaw);
+        drawLine(leftEyebrow, (leftEye[1].y - leftEyebrow[4].y > 2) ? '#ff0' : '#0f0', 2);
+        drawLine(rightEyebrow, (rightEye[1].y - rightEyebrow[4].y > 2) ? '#ff0' : '#0f0', 2);
         drawLine(leftEye);
         drawLine(rightEye);
         drawLine(nose);
-        drawLine(mouth, mouthColor);
+        drawLine(mouth, (mouth[13].y - mouth[19].y > 2) ? '#f00' : '#0f0', 2);
       });
-    }, 50);
+    }, 33); // ~30fps for smoother appearance
   });
 });
 </script>
