@@ -63,16 +63,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     .catch(err => console.error('Error accessing webcam:', err));
 
   video.addEventListener('play', () => {
-    overlayLeft.width = video.videoWidth;
-    overlayLeft.height = video.videoHeight;
-    overlayRight.width = overlayLeft.width;
-    overlayRight.height = overlayLeft.height;
+    // Use displayed video size to align boxes correctly
+    const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
+    overlayLeft.width = displaySize.width;
+    overlayLeft.height = displaySize.height;
+    overlayRight.width = displaySize.width;
+    overlayRight.height = displaySize.height;
 
-    const displaySize = { width: video.videoWidth, height: video.videoHeight };
     faceapi.matchDimensions(overlayLeft, displaySize);
     faceapi.matchDimensions(overlayRight, displaySize);
-
-    const scaleRight = 2; // make wireframe larger on right canvas
 
     setInterval(async () => {
       const detections = await faceapi
@@ -82,7 +81,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 
       const resized = faceapi.resizeResults(detections, displaySize);
 
-      // Clear canvases
       ctxLeft.clearRect(0,0,overlayLeft.width, overlayLeft.height);
       ctxRight.clearRect(0,0,overlayRight.width, overlayRight.height);
 
@@ -90,20 +88,31 @@ window.addEventListener('DOMContentLoaded', async () => {
       faceapi.draw.drawDetections(overlayLeft, resized);
       faceapi.draw.drawFaceExpressions(overlayLeft, resized);
 
-      // Right: wireframe lines
+      // Right: wireframe face
       resized.forEach(det => {
         const lm = det.landmarks;
-        ctxRight.strokeStyle = '#0f0';
-        ctxRight.lineWidth = 2;
+        const allPoints = lm.positions;
+        const minX = Math.min(...allPoints.map(p=>p.x));
+        const minY = Math.min(...allPoints.map(p=>p.y));
+        const maxX = Math.max(...allPoints.map(p=>p.x));
+        const maxY = Math.max(...allPoints.map(p=>p.y));
+
+        const scaleX = overlayRight.width / (maxX - minX) * 0.8;
+        const scaleY = overlayRight.height / (maxY - minY) * 0.8;
+        const offsetX = (overlayRight.width - (maxX - minX) * scaleX)/2 - minX * scaleX;
+        const offsetY = (overlayRight.height - (maxY - minY) * scaleY)/2 - minY * scaleY;
 
         function drawLine(points){
           ctxRight.beginPath();
-          ctxRight.moveTo(points[0].x*scaleRight, points[0].y*scaleRight);
+          ctxRight.moveTo(points[0].x*scaleX + offsetX, points[0].y*scaleY + offsetY);
           for(let i=1;i<points.length;i++){
-            ctxRight.lineTo(points[i].x*scaleRight, points[i].y*scaleRight);
+            ctxRight.lineTo(points[i].x*scaleX + offsetX, points[i].y*scaleY + offsetY);
           }
           ctxRight.stroke();
         }
+
+        ctxRight.strokeStyle = '#0f0';
+        ctxRight.lineWidth = 2;
 
         drawLine(lm.getJawOutline());
         drawLine(lm.getLeftEye());
