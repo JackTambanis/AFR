@@ -66,17 +66,21 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   function lerp(a, b, t){ return a + (b - a) * t; }
   function smoothLandmarks(current, previous, t=0.5){
-    if(!previous) return current;
+    if(!previous) return current.map(p => ({x: p.x, y: p.y}));
     return current.map((p, i) => ({ x: lerp(previous[i].x, p.x, t), y: lerp(previous[i].y, p.y, t) }));
   }
 
   video.addEventListener('play', () => {
-    const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
-    overlayLeft.width = displaySize.width;
-    overlayLeft.height = displaySize.height;
-    overlayRight.width = displaySize.width;
-    overlayRight.height = displaySize.height;
+    function updateCanvasSizes(){
+      const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
+      overlayLeft.width = displaySize.width;
+      overlayLeft.height = displaySize.height;
+      overlayRight.width = displaySize.width;
+      overlayRight.height = displaySize.height;
+      return displaySize;
+    }
 
+    const displaySize = updateCanvasSizes();
     faceapi.matchDimensions(overlayLeft, displaySize);
     faceapi.matchDimensions(overlayRight, displaySize);
 
@@ -95,9 +99,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       faceapi.draw.drawDetections(overlayLeft, resized);
       faceapi.draw.drawFaceExpressions(overlayLeft, resized);
 
-      // Right: wireframe with smoothing and expression highlights
+      // Right: wireframe face
       resized.forEach(det => {
-        let lm = det.landmarks;
+        const lm = det.landmarks;
         const smoothed = smoothLandmarks(lm.positions, previousLandmarks);
         previousLandmarks = smoothed;
 
@@ -117,34 +121,37 @@ window.addEventListener('DOMContentLoaded', async () => {
           ctxRight.beginPath();
           ctxRight.strokeStyle = color;
           ctxRight.lineWidth = width;
-          ctxRight.moveTo(points[0].x*scaleX+offsetX, points[0].y*scaleY+offsetY);
+          ctxRight.moveTo(points[0].x*scaleX + offsetX, points[0].y*scaleY + offsetY);
           for(let i=1;i<points.length;i++){
-            ctxRight.lineTo(points[i].x*scaleX+offsetX, points[i].y*scaleY+offsetY);
+            ctxRight.lineTo(points[i].x*scaleX + offsetX, points[i].y*scaleY + offsetY);
           }
           ctxRight.stroke();
         }
 
         // Eyebrow raise detection
         const leftEyebrow = lm.getLeftEyebrow();
+        const rightEyebrow = lm.getRightEyebrow();
         const leftEye = lm.getLeftEye();
-        const eyebrowRaise = leftEye[1].y - leftEyebrow[4].y;
-        const eyebrowColor = eyebrowRaise > 5 ? '#ff0' : '#0f0';
+        const rightEye = lm.getRightEye();
+        const eyebrowRaiseLeft = leftEye[1].y - leftEyebrow[4].y;
+        const eyebrowRaiseRight = rightEye[1].y - rightEyebrow[4].y;
+        const eyebrowColor = (eyebrowRaiseLeft > 5 || eyebrowRaiseRight > 5) ? '#ff0' : '#0f0';
 
         // Mouth open detection
         const mouth = lm.getMouth();
         const mouthOpen = mouth[13].y - mouth[19].y;
         const mouthColor = mouthOpen > 5 ? '#f00' : '#0f0';
 
-        // Draw all features
+        // Draw features
         drawLine(lm.getJawOutline());
         drawLine(leftEyebrow, eyebrowColor);
-        drawLine(lm.getRightEyebrow(), eyebrowColor);
-        drawLine(lm.getLeftEye());
-        drawLine(lm.getRightEye());
+        drawLine(rightEyebrow, eyebrowColor);
+        drawLine(leftEye);
+        drawLine(rightEye);
         drawLine(lm.getNose());
         drawLine(mouth, mouthColor);
       });
-    }, 50); // faster interval for smoother updates
+    }, 50);
   });
 });
 </script>
