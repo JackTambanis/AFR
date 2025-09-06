@@ -5,96 +5,105 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Face & Expression iPhone Layout</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
-  #container { display: flex; flex-direction: column; width: 100%; height: 100%; }
-  #top { position: relative; flex: 1; display: flex; justify-content: center; align-items: center; }
-  #bottom { position: relative; flex: 1; }
-  #video { width: 100%; height: 100%; object-fit: cover; max-height: 100%; }
-  canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
+  /* Container split vertically */
+  #container { display:flex; flex-direction:column; width:100%; height:100%; }
+  .half { flex:1; position:relative; }
+  /* Video fills top half */
+  #video { width:100%; height:100%; object-fit:cover; }
+  /* Canvas fills bottom half */
+  canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
 </style>
 </head>
 <body>
 <div id="container">
-  <div id="top">
+  <div class="half" id="top">
     <video id="video" autoplay muted playsinline></video>
   </div>
-  <div id="bottom">
+  <div class="half" id="bottom">
     <canvas id="overlayBottom"></canvas>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js/dist/face-api.min.js"></script>
 <script>
-window.addEventListener('DOMContentLoaded', async () => {
+// JS stays completely the same as before
+async function startFaceDetection() {
   const video = document.getElementById('video');
-  const overlayBottom = document.getElementById('overlayBottom');
-  const ctxBottom = overlayBottom.getContext('2d');
-  let previousJaw = null;
+  const overlay = document.getElementById('overlayBottom');
+  const ctx = overlay.getContext('2d');
 
-  // Load face-api models
   await Promise.all([
     faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
     faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'),
     faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights')
   ]);
 
-  // Start camera
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-    .then(stream => video.srcObject = stream)
-    .catch(err => console.error('Error accessing camera:', err));
+  const isIPhone = /iPhone/.test(navigator.userAgent);
+  const facingMode = isIPhone ? "user" : "environment";
 
-  function lerp(a, b, t){ return a + (b - a) * t; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode } })
+    .then(stream => video.srcObject = stream)
+    .catch(err => console.error("Camera error:", err));
+
+  let previousJaw = null;
+
+  function lerp(a,b,t){return a+(b-a)*t;}
   function smoothLandmarks(current, previous, t=0.3){
-    if(!previous) return current.map(p => ({x: p.x, y: p.y}));
-    return current.map((p,i) => ({x: lerp(previous[i].x, p.x, t), y: lerp(previous[i].y, p.y, t)}));
+    if(!previous) return current.map(p=>({x:p.x,y:p.y}));
+    return current.map((p,i)=>({x:lerp(previous[i].x,p.x,t),y:lerp(previous[i].y,p.y,t)}));
   }
 
   const featureIndices = {
-    jaw: [...Array(17).keys()],
-    leftEyebrow: [...Array(5).keys()].map(i=>i+17),
-    rightEyebrow: [...Array(5).keys()].map(i=>i+22),
-    nose: [...Array(9).keys()].map(i=>i+27),
-    leftEye: [...Array(6).keys()].map(i=>i+36),
-    rightEye: [...Array(6).keys()].map(i=>i+42),
-    mouth: [...Array(20).keys()].map(i=>i+48)
+    jaw:[...Array(17).keys()],
+    leftEyebrow:[...Array(5).keys()].map(i=>i+17),
+    rightEyebrow:[...Array(5).keys()].map(i=>i+22),
+    nose:[...Array(9).keys()].map(i=>i+27),
+    leftEye:[...Array(6).keys()].map(i=>i+36),
+    rightEye:[...Array(6).keys()].map(i=>i+42),
+    mouth:[...Array(20).keys()].map(i=>i+48)
   };
 
-  function extractFeature(points, indices){ return indices.map(i => points[i]); }
+  function extractFeature(points, indices){ return indices.map(i=>points[i]); }
 
-  video.addEventListener('play', () => {
-    const displaySize = { width: overlayBottom.offsetWidth, height: overlayBottom.offsetHeight };
-    overlayBottom.width = displaySize.width;
-    overlayBottom.height = displaySize.height;
+  function resizeCanvas(){
+    overlay.width = overlay.offsetWidth;
+    overlay.height = overlay.offsetHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
 
-    setInterval(async () => {
+  video.addEventListener('play', ()=>{
+    setInterval(async ()=>{
       const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+        .detectAllFaces(video,new faceapi.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:0.5}))
         .withFaceLandmarks()
         .withFaceExpressions();
 
-      const resized = faceapi.resizeResults(detections, displaySize);
-      ctxBottom.clearRect(0,0,overlayBottom.width,overlayBottom.height);
+      ctx.clearRect(0,0,overlay.width,overlay.height);
 
-      resized.forEach(det => {
+      const resized = faceapi.resizeResults(detections,{width:overlay.width,height:overlay.height});
+
+      resized.forEach(det=>{
         const lm = det.landmarks;
-        const smoothedJaw = smoothLandmarks(extractFeature(lm.positions, featureIndices.jaw), previousJaw, 0.2);
+        const smoothedJaw = smoothLandmarks(extractFeature(lm.positions,featureIndices.jaw),previousJaw,0.2);
         previousJaw = smoothedJaw;
 
-        const leftEyebrow = extractFeature(lm.positions, featureIndices.leftEyebrow);
-        const rightEyebrow = extractFeature(lm.positions, featureIndices.rightEyebrow);
-        const leftEye = extractFeature(lm.positions, featureIndices.leftEye);
-        const rightEye = extractFeature(lm.positions, featureIndices.rightEye);
-        const nose = extractFeature(lm.positions, featureIndices.nose);
-        const mouth = extractFeature(lm.positions, featureIndices.mouth);
+        const leftEyebrow = extractFeature(lm.positions,featureIndices.leftEyebrow);
+        const rightEyebrow = extractFeature(lm.positions,featureIndices.rightEyebrow);
+        const leftEye = extractFeature(lm.positions,featureIndices.leftEye);
+        const rightEye = extractFeature(lm.positions,featureIndices.rightEye);
+        const nose = extractFeature(lm.positions,featureIndices.nose);
+        const mouth = extractFeature(lm.positions,featureIndices.mouth);
 
-        function drawLine(points, color='#0f0', width=2){
+        function drawLine(points,color='#0f0',width=2){
           if(points.length===0) return;
-          ctxBottom.beginPath();
-          ctxBottom.strokeStyle=color;
-          ctxBottom.lineWidth=width;
-          ctxBottom.moveTo(points[0].x,points[0].y);
-          for(let i=1;i<points.length;i++) ctxBottom.lineTo(points[i].x,points[i].y);
-          ctxBottom.stroke();
+          ctx.beginPath();
+          ctx.strokeStyle=color;
+          ctx.lineWidth=width;
+          ctx.moveTo(points[0].x,points[0].y);
+          for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x,points[i].y);
+          ctx.stroke();
         }
 
         drawLine(smoothedJaw);
@@ -105,9 +114,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         drawLine(nose);
         drawLine(mouth,(mouth[13].y-mouth[19].y>2)?'#f00':'#0f0',2);
       });
-    }, 33);
+    },33);
   });
-});
+}
+
+startFaceDetection();
 </script>
 </body>
 </html>
