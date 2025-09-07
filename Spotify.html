@@ -1,182 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FREEPUPSDOTORG — Jack Tambanis</title>
-  <style>
-    /* Reset */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: system-ui, sans-serif;
-      color: #fff;
-      background: #000;
-      overflow-x: hidden;
-      line-height: 1.6;
-      cursor: none; /* Hide default cursor */
-    }
-
-    section {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      padding: 2rem;
-      text-align: center;
-      opacity: 0;
-      transform: translateY(40px);
-      transition: all 1s ease-out;
-    }
-    section.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    h1, h2 {
-      margin-bottom: 1rem;
-    }
-    h1 { font-size: 2.8rem; letter-spacing: 2px; }
-    h2 { font-size: 2rem; margin-top: 1rem; }
-
-    p {
-      max-width: 600px;
-      font-size: 1.1rem;
-      margin-bottom: 1rem;
-      opacity: 0.9;
-    }
-
-    a.button {
-      display: inline-block;
-      margin-top: 1rem;
-      padding: 0.8rem 1.5rem;
-      border: 2px solid #fff;
-      border-radius: 50px;
-      text-decoration: none;
-      color: #fff;
-      transition: 0.3s;
-    }
-    a.button:hover {
-      background: #fff;
-      color: #000;
-    }
-
-    /* Background animation */
-    canvas {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -1;
-    }
-
-    /* Custom cursor */
-    .cursor {
-      position: fixed;
-      top: 0; left: 0;
-      width: 18px; height: 18px;
-      background: white;
-      border-radius: 50%;
-      pointer-events: none;
-      transform: translate(-50%, -50%);
-      transition: transform 0.2s ease, opacity 0.2s ease;
-      z-index: 9999;
-    }
-    .cursor.active {
-      transform: translate(-50%, -50%) scale(2);
-      opacity: 0.6;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Particle Field Cursor</title>
+<style>
+  body { margin:0; overflow:hidden; background:black; cursor:none; }
+  canvas { display:block; }
+</style>
 </head>
 <body>
-  <canvas id="bg"></canvas>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let w = canvas.width = window.innerWidth;
+let h = canvas.height = window.innerHeight;
 
-  <!-- Custom cursor -->
-  <div class="cursor" id="cursor"></div>
+window.addEventListener('resize', ()=>{
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+});
 
-  <section id="home">
-    <h1>Jack Tambanis</h1>
-    <h2>Front-End Developer & App Creator</h2>
-    <p>Welcome to <strong>FREEPUPSDOTORG</strong> </p>
-  </section>
+// Cursor
+let cursor = { x: w/2, y: h/2 };
+document.addEventListener('mousemove', e=>{
+  cursor.x = e.clientX;
+  cursor.y = e.clientY;
+});
 
-  <section id="about">
-    <h2>About Me</h2>
-    <p>I’m Jack, 12 years old, and a front-end developer and app creator. From an early age, I’ve been curious about how digital things work. While other kids used apps, I explored how systems and code operate behind the scenes. I’ve taught myself HTML, CSS, JavaScript, Python, Lua, and C++, starting with simple game scripts and moving on to small coding projects, creating interfaces, and automating tasks.
-    I’m also interested in hardware and electronics. I’ve spent time working with Arduino and ESP32 to build projects and experiment with automation. Recently, I completed a Front-End Development Certification. I also help plan and run creative events with the Bayside Boombox Event Committee in my community.</p>
-  </section>
+// Particle class
+class Particle {
+  constructor(x, y, z){
+    this.originX = x;
+    this.originY = y;
+    this.originZ = z; // depth
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.size = 2 + z*3;
+    this.vx = 0;
+    this.vy = 0;
+  }
+  update(){
+    // Vector from cursor to particle
+    const dx = this.x - cursor.x;
+    const dy = this.y - cursor.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const radius = 100; // influence radius
 
-  <section id="apps">
-    <h2>Apps</h2>
-    <p>Here’s some of my creations:</p>
-    <p><strong>FREEPUPSDOTORG.FACE AI</strong> — an experimental web app that uses AI to detect faces and analyze expressions, right in your browser.</p>
-    <a href="hi.html" target="_blank" class="button">View App</a>
-    <a href="hib.html" target="_blank" class="button">View Beta</a>
-    <br>
-    <p><strong>FREEPUPSDOTORG.PARTICLES</strong> — a touch driven particle playground.</p>
-    <a href="bye.html" target="_blank" class="button">View App</a>
-  </section>
-
-  <section id="links">
-    <h2>Links</h2>
-    <p>Find me and my work here:</p>
-    <a href="https://github.com/JackTambanis" target="_blank" class="button">GitHub</a>
-  </section>
-
-  <script>
-    /* Section fade-in on scroll */
-    const sections = document.querySelectorAll("section");
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) entry.target.classList.add("visible");
-      });
-    }, { threshold: 0.2 });
-    sections.forEach(s => observer.observe(s));
-
-    /* Animated surreal gradient background */
-    const canvas = document.getElementById("bg");
-    const ctx = canvas.getContext("2d");
-    let w, h, t = 0;
-
-    function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
+    if(dist < radius){
+      const force = (radius - dist)/radius*5;
+      this.vx += (dx/dist)*force;
+      this.vy += (dy/dist)*force;
     }
-    window.addEventListener("resize", resize);
-    resize();
 
-    function draw() {
-      t += 0.01;
-      const g = ctx.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0, `hsl(${(t*40)%360}, 80%, 50%)`);
-      g.addColorStop(1, `hsl(${(t*80)%360}, 80%, 20%)`);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
+    // Return to original position slowly
+    const homeForce = 0.02;
+    this.vx += (this.originX - this.x)*homeForce;
+    this.vy += (this.originY - this.y)*homeForce;
 
-      // Add floating circles
-      for (let i=0; i<20; i++) {
-        const x = (Math.sin(t + i) + 1) * w/2;
-        const y = (Math.cos(t/2 + i) + 1) * h/2;
-        ctx.beginPath();
-        ctx.arc(x, y, 40, 0, Math.PI*2);
-        ctx.fillStyle = `hsla(${(t*60+i*20)%360},70%,60%,0.2)`;
-        ctx.fill();
-      }
+    // Apply velocity with damping
+    this.vx *= 0.9;
+    this.vy *= 0.9;
+    this.x += this.vx;
+    this.y += this.vy;
+  }
+  draw(){
+    const scale = this.z; // pseudo depth scaling
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size*scale, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(${this.z*100}, 80%, 60%, 0.8)`;
+    ctx.fill();
+  }
+}
 
-      requestAnimationFrame(draw);
-    }
-    draw();
+// Create particle array
+const particles = [];
+const spacing = 30;
+for(let y=spacing/2; y<h; y+=spacing){
+  for(let x=spacing/2; x<w; x+=spacing){
+    const z = Math.random()*1.5 + 0.5; // depth
+    particles.push(new Particle(x, y, z));
+  }
+}
 
-    /* Custom cursor script */
-    const cursor = document.getElementById("cursor");
-    document.addEventListener("mousemove", e => {
-      cursor.style.left = e.clientX + "px";
-      cursor.style.top = e.clientY + "px";
-    });
-    document.querySelectorAll("a, button").forEach(el => {
-      el.addEventListener("mouseenter", () => cursor.classList.add("active"));
-      el.addEventListener("mouseleave", () => cursor.classList.remove("active"));
-    });
-  </script>
+function animate(){
+  ctx.clearRect(0,0,w,h);
+
+  // Draw and update particles sorted by depth
+  particles.sort((a,b)=>b.z-a.z);
+  particles.forEach(p=>{
+    p.update();
+    p.draw();
+  });
+
+  // Draw cursor
+  ctx.beginPath();
+  ctx.arc(cursor.x, cursor.y, 10, 0, Math.PI*2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
 </body>
 </html>
