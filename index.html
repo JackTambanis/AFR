@@ -1,1 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ESP32 Hardware Wallet Demo</title>
+</head>
+<body>
+<h2>ESP32 Wallet Demo</h2>
+<button id="connectBtn">Connect to Wallet</button>
+<button id="sendTxBtn" disabled>Send Test Transaction</button>
+<pre id="log"></pre>
 
+<script>
+let txCharacteristic;
+const SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+const TX_CHAR_UUID = "abcdef01-1234-1234-1234-1234567890ab";
+
+const log = (msg) => {
+  document.getElementById('log').textContent += msg + '\n';
+};
+
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  try {
+    log('Requesting ESP32 Wallet...');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'ESP32-Wallet' }],
+      optionalServices: [SERVICE_UUID]
+    });
+
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    txCharacteristic = await service.getCharacteristic(TX_CHAR_UUID);
+
+    await txCharacteristic.startNotifications();
+    txCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+      const value = new TextDecoder().decode(event.target.value);
+      log('ESP32: ' + value);
+    });
+
+    log('Connected to ESP32 Wallet!');
+    document.getElementById('sendTxBtn').disabled = false;
+
+  } catch (err) {
+    log('Error: ' + err);
+  }
+});
+
+document.getElementById('sendTxBtn').addEventListener('click', async () => {
+  if (!txCharacteristic) return;
+  const tx = {
+    to: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    value: "0.001 ETH",
+    gasLimit: 21000,
+    gasPrice: "10 gwei",
+    nonce: 0,
+    chainId: 5
+  };
+  const txJSON = JSON.stringify(tx);
+  await txCharacteristic.writeValue(new TextEncoder().encode(txJSON));
+  log('Transaction sent to ESP32 for signing...');
+});
+</script>
+</body>
+</html>
